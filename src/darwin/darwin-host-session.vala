@@ -116,7 +116,6 @@ namespace Frida {
 		private FruitController fruit_controller;
 #endif
 
-		private ApplicationEnumerator application_enumerator = new ApplicationEnumerator ();
 		private ProcessEnumerator process_enumerator = new ProcessEnumerator ();
 
 		public DarwinHostSession (owned DarwinHelper helper, owned TemporaryDirectory tempdir, bool report_crashes = true) {
@@ -238,7 +237,12 @@ namespace Frida {
 
 		public override async HostApplicationInfo[] enumerate_applications (HashTable<string, Variant> options,
 				Cancellable? cancellable) throws Error, IOError {
-			return yield application_enumerator.enumerate_applications (ApplicationQueryOptions._deserialize (options));
+			var opts = ApplicationQueryOptions._deserialize (options);
+#if IOS
+			return yield fruit_controller.enumerate_applications (opts, cancellable);
+#else
+			return {};
+#endif
 		}
 
 		public override async HostProcessInfo[] enumerate_processes (HashTable<string, Variant> options,
@@ -410,6 +414,7 @@ namespace Frida {
 		}
 
 		private LaunchdAgent launchd_agent;
+		private SpringBoardAgent sb_agent;
 
 		private bool spawn_gating_enabled = false;
 		private Gee.HashMap<string, Promise<uint>> spawn_requests = new Gee.HashMap<string, Promise<uint>> ();
@@ -450,6 +455,8 @@ namespace Frida {
 			launchd_agent.spawn_preparation_aborted.connect (on_spawn_preparation_aborted);
 			launchd_agent.spawn_captured.connect (on_spawn_captured);
 
+			sb_agent = new SpringBoardAgent (host_session);
+
 			helper.process_resumed.connect (on_process_resumed);
 			helper.process_killed.connect (on_process_killed);
 		}
@@ -473,7 +480,14 @@ namespace Frida {
 				}
 			}
 
+			yield sb_agent.close (cancellable);
+
 			yield launchd_agent.close (cancellable);
+		}
+
+		public async HostApplicationInfo[] enumerate_applications (ApplicationQueryOptions options,
+				Cancellable? cancellable) throws Error, IOError {
+			return yield sb_agent.enumerate_applications (options, cancellable);
 		}
 
 		public async void enable_spawn_gating (Cancellable? cancellable) throws Error, IOError {
@@ -1032,6 +1046,53 @@ namespace Frida {
 
 		protected override async string? load_source (Cancellable? cancellable) throws Error, IOError {
 			return (string) Frida.Data.Darwin.get_xpcproxy_js_blob ().data;
+		}
+	}
+
+	private class SpringBoardAgent : InternalAgent {
+		public SpringBoardAgent (DarwinHostSession host_session) {
+			Object (host_session: host_session);
+		}
+
+		public async HostApplicationInfo[] enumerate_applications (ApplicationQueryOptions options,
+				Cancellable? cancellable) throws Error, IOError {
+			var identifiers_array = new Json.Array ();
+			options.enumerate_selected_identifiers (identifier => {
+				identifiers_array.add_string_element (identifier);
+			});
+			var identifiers_node = new Json.Node.alloc ().init_array (identifiers_array);
+
+			var scope = options.scope;
+			var scope_node = new Json.Node.alloc ().init_string (scope.to_nick ());
+
+			Json.Node apps = yield call ("enumerateApplications", new Json.Node[] { identifiers_node, scope_node },
+				cancellable);
+
+			var items = apps.get_array ();
+			var length = items.get_length ();
+
+			var result = new HostApplicationInfo[length];
+
+			for (var i = 0; i != length; i++) {
+				var item = items.get_array_element (i);
+				var identifier = item.get_string_element (0);
+				var name = item.get_string_element (1);
+				var pid = (uint) item.get_int_element (2);
+				var info = HostApplicationInfo (identifier, name, pid, make_parameters_dict ());
+				if (scope != MINIMAL)
+					Marshal.add_parameters_from_json (info.parameters, item.get_object_element (3));
+				result[i] = info;
+			}
+
+			return result;
+		}
+
+		protected override async uint get_target_pid (Cancellable? cancellable) throws Error, IOError {
+			return LocalProcesses.get_pid ("atc");
+		}
+
+		protected override async string? load_source (Cancellable? cancellable) throws Error, IOError {
+			return (string) Frida.Data.Darwin.get_springboard_js_blob ().data;
 		}
 	}
 

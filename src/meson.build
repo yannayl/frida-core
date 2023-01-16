@@ -39,6 +39,7 @@ if host_os_family == 'darwin'
       'darwin/frida-darwin.resources',
       'darwin/agent/launchd.js',
       'darwin/agent/xpcproxy.js',
+      'darwin/agent/springboard.js',
       'darwin/agent/reportcrash.js',
       'darwin/agent/osanalytics.js',
     ],
@@ -57,6 +58,7 @@ if host_os_family == 'darwin'
       '@INPUT2@',
       '@INPUT3@',
       '@INPUT4@',
+      '@INPUT5@',
     ],
   )
   darwin_sources += [darwin_data]
