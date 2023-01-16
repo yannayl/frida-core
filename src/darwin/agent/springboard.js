@@ -8,7 +8,7 @@ const sbs = importSpringBoardServices();
 const pidPtr = Memory.alloc(4);
 
 rpc.exports = {
-  enumerateApplications() {
+  enumerateApplications(identifiers, scope) {
     return performWithAutoreleasePool(() => {
       const identifiers = sbs.copyApplicationDisplayIdentifiers(NO, NO);
       return mapNSArray(identifiers, identifier => {
@@ -20,7 +20,7 @@ rpc.exports = {
         else
           pid = 0;
 
-        const parameters = {};
+        const parameters = (scope !== 'minimal') ? fetchAppParameters(identifier, scope) : null;
 
         return [identifier.toString(), name.toString(), pid, parameters];
       });
@@ -28,10 +28,24 @@ rpc.exports = {
   }
 };
 
+function fetchAppParameters(identifier, scope) {
+  const parameters = {};
+
+  if (scope === 'full') {
+    const icon = sbs.copyIconImagePNGDataForDisplayIdentifier(identifier);
+    if (icon !== null) {
+      parameters.$icon = icon.base64EncodedStringWithOptions_(0).toString();
+    }
+  }
+
+  return parameters;
+}
+
 function importSpringBoardServices() {
   return [
     ['copyApplicationDisplayIdentifiers', 'pointer', ['bool', 'bool']],
     ['copyLocalizedApplicationNameForDisplayIdentifier', 'pointer', ['pointer']],
+    ['copyIconImagePNGDataForDisplayIdentifier', 'pointer', ['pointer']],
     ['processIDForDisplayIdentifier', 'bool', ['pointer', 'pointer']],
   ].reduce((api, [name, retType, argTypes]) => {
     const cname = 'SBS' + name[0].toUpperCase() + name.substring(1);
