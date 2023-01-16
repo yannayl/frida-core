@@ -1458,5 +1458,65 @@ namespace Frida {
 			var klass = (EnumClass) typeof (T).class_ref ();
 			return klass.get_value (val).value_nick;
 		}
+
+		public static void add_parameters_from_json (HashTable<string, Variant> parameters, Json.Object object) {
+			var iter = Json.ObjectIter ();
+			unowned string name;
+			unowned Json.Node val;
+			iter.init (object);
+			while (iter.next (out name, out val)) {
+				if (name == "$icon") {
+					var png = new Bytes.take (Base64.decode (val.get_string ()));
+
+					var icons = new VariantBuilder (new VariantType.array (VariantType.VARDICT));
+
+					icons.open (VariantType.VARDICT);
+					icons.add ("{sv}", "format", new Variant.string ("png"));
+					icons.add ("{sv}", "image", Variant.new_from_data (new VariantType ("ay"), png.get_data (), true,
+						png));
+					icons.close ();
+
+					parameters["icons"] = icons.end ();
+
+					continue;
+				}
+
+				parameters[name] = variant_from_json (val);
+			}
+		}
+
+		public static Variant variant_from_json (Json.Node node) {
+			switch (node.get_node_type ()) {
+				case ARRAY: {
+					Json.Array array = node.get_array ();
+
+					uint length = array.get_length ();
+					assert (length >= 1);
+
+					var first_element = variant_from_json (array.get_element (0));
+					var builder = new VariantBuilder (new VariantType.array (first_element.get_type ()));
+					builder.add_value (first_element);
+					for (uint i = 1; i != length; i++)
+						builder.add_value (variant_from_json (array.get_element (i)));
+					return builder.end ();
+				}
+				case VALUE: {
+					Type type = node.get_value_type ();
+
+					if (type == typeof (string))
+						return new Variant.string (node.get_string ());
+
+					if (type == typeof (int64))
+						return new Variant.int64 (node.get_int ());
+
+					if (type == typeof (bool))
+						return new Variant.boolean (node.get_boolean ());
+
+					assert_not_reached ();
+				}
+				default:
+					assert_not_reached ();
+			}
+		}
 	}
 }
