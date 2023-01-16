@@ -1228,6 +1228,23 @@ namespace Frida {
 		}
 	}
 
+	namespace LocalProcesses {
+		internal uint find_pid (string name) {
+			foreach (HostProcessInfo info in System.enumerate_processes (new ProcessQueryOptions ())) {
+				if (info.name == name)
+					return info.pid;
+			}
+			return 0;
+		}
+
+		internal uint get_pid (string name) throws Error {
+			var pid = find_pid (name);
+			if (pid == 0)
+				throw new Error.PROCESS_NOT_FOUND ("Unable to find process with name '%s'".printf (name));
+			return pid;
+		}
+	}
+
 	public abstract class InternalAgent : Object, AgentMessageSink, RpcPeer {
 		public signal void unloaded ();
 
