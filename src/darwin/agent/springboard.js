@@ -2,6 +2,7 @@ const {
   LSApplicationProxy,
   NSAutoreleasePool,
   NSNumber,
+  NSString,
 } = ObjC.classes;
 
 const NO = 0;
@@ -11,10 +12,16 @@ const pidPtr = Memory.alloc(4);
 
 rpc.exports = {
   enumerateApplications(identifiers, scope) {
+    console.log('identifiers:', JSON.stringify(identifiers));
     return performWithAutoreleasePool(() => {
-      const identifiers = sbs.copyApplicationDisplayIdentifiers(NO, NO);
+      let identifierObjects;
+      if (identifiers.length === 0)
+        identifierObjects = parseNSArray(sbs.copyApplicationDisplayIdentifiers(NO, NO));
+      else
+        identifierObjects = identifiers.map(id => NSString.stringWithUTF8String_(Memory.allocUtf8String(id)));
+
       const result = [];
-      for (const identifier of parseNSArray(identifiers)) {
+      for (const identifier of identifierObjects) {
         try {
           const name = sbs.copyLocalizedApplicationNameForDisplayIdentifier(identifier);
 
@@ -24,7 +31,7 @@ rpc.exports = {
           else
             pid = 0;
 
-          const parameters = (scope !== 'minimal') ? fetchAppParameters(identifier, pid, scope) : null;
+          const parameters = fetchAppParameters(identifier, pid, scope);
 
           result.push([identifier.toString(), name.toString(), pid, parameters]);
         } catch (e) {
@@ -37,8 +44,12 @@ rpc.exports = {
 };
 
 function fetchAppParameters(identifier, pid, scope) {
+  if (scope === 'minimal')
+    return null;
+
   const parameters = {
     ...fetchAppMetadata(identifier),
+    ...fetchAppState(pid),
   };
 
   if (scope === 'full') {
@@ -86,6 +97,23 @@ function fetchAppMetadata(identifier, parameters) {
     meta.debuggable = true;
 
   return meta;
+}
+
+function fetchAppState(pid) {
+  const state = {};
+
+  if (pid === 0)
+    return state;
+
+  const info = sbs.copyInfoForApplicationWithProcessID(pid);
+  if (info === null)
+    return state;
+
+  const isFrontmost = info.valueForKey_('BKSApplicationStateAppIsFrontmost');
+  if (isFrontmost.boolValue())
+    state.frontmost = true;
+
+  return state;
 }
 
 function importSpringBoardServices() {
