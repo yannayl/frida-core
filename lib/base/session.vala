@@ -1487,6 +1487,15 @@ namespace Frida {
 
 		public static Variant variant_from_json (Json.Node node) {
 			switch (node.get_node_type ()) {
+				case OBJECT: {
+					Json.Object object = node.get_object ();
+
+					var dict = new VariantBuilder (VariantType.VARDICT);
+					object.foreach_member ((obj, member_name, member_node) => {
+						dict.add ("{sv}", member_name, variant_from_json (member_node));
+					});
+					return dict.end ();
+				}
 				case ARRAY: {
 					Json.Array array = node.get_array ();
 
