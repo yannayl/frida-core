@@ -352,6 +352,9 @@ namespace Frida {
 
 		private async uint _inject (uint pid, string path_or_name, MappedLibraryBlob? blob, string entrypoint, string data,
 				Cancellable? cancellable) throws Error, IOError {
+			if (pid == 1)
+				throw new Error.NOT_SUPPORTED ("No, not yet");
+
 			yield prepare_target (pid, cancellable);
 
 			var task = task_for_pid (pid);

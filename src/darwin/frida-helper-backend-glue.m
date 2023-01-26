@@ -2112,6 +2112,7 @@ _frida_darwin_helper_backend_inject_into_task (FridaDarwinHelperBackend * self, 
       goto gum_failure;
 
     g_object_get (mapper, "module", &module, NULL);
+    g_printerr ("Injected into PID %u at 0x%llx\n", pid, module->base_address);
     mapped_module._mach_header_address = module->base_address;
     mapped_module._uuid = module->uuid;
     mapped_module._path = module->name;

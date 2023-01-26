@@ -1,0 +1,15 @@
+{
+  "name": "agent",
+  "version": "1.0.0",
+  "description": "",
+  "main": "launchd.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "frida-compile": "^10.2.5",
+    "frida-objc-bridge": "^7.0.2"
+  }
+}

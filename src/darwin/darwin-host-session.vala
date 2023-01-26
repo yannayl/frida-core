@@ -116,6 +116,7 @@ namespace Frida {
 		private FruitController fruit_controller;
 #endif
 
+		private ApplicationEnumerator application_enumerator = new ApplicationEnumerator ();
 		private ProcessEnumerator process_enumerator = new ProcessEnumerator ();
 
 		public DarwinHostSession (owned DarwinHelper helper, owned TemporaryDirectory tempdir, bool report_crashes = true) {
@@ -237,9 +238,10 @@ namespace Frida {
 
 		public override async HostApplicationInfo[] enumerate_applications (HashTable<string, Variant> options,
 				Cancellable? cancellable) throws Error, IOError {
-			var opts = ApplicationQueryOptions._deserialize (options);
 #if IOS
+			var opts = ApplicationQueryOptions._deserialize (options);
 			return yield fruit_controller.enumerate_applications (opts, cancellable);
+			//return yield application_enumerator.enumerate_applications (opts);
 #else
 			return {};
 #endif

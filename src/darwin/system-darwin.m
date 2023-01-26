@@ -189,6 +189,8 @@ frida_system_enumerate_applications (FridaApplicationQueryOptions * options, int
   struct kinfo_proc * processes;
   guint count, i;
 
+  GTimer * timer = g_timer_new ();
+
   op.scope = frida_application_query_options_get_scope (options);
   op.process_by_identifier = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, NULL);
   op.api = _frida_get_springboard_api ();
@@ -232,6 +234,9 @@ frida_system_enumerate_applications (FridaApplicationQueryOptions * options, int
   [pool release];
 
   *result_length = op.result->len;
+
+  g_printerr ("enumerate_applications() took %u ms\n", (guint) (g_timer_elapsed (timer, NULL) * 1000.0));
+  g_timer_destroy (timer);
 
   return (FridaHostApplicationInfo *) g_array_free (op.result, FALSE);
 }
@@ -536,9 +541,15 @@ frida_add_app_metadata (GHashTable * parameters, NSString * identifier, FridaSpr
   NSDictionary<NSString *, NSURL *> * container_urls;
   NSNumber * get_task_allow;
 
+  GTimer * timer = g_timer_new ();
+
   app = [api->LSApplicationProxy applicationProxyForIdentifier:identifier];
   if (app == nil)
     return;
+
+  g_printerr ("Part one took %u ms\n", (guint) (g_timer_elapsed (timer, NULL) * 1000.0));
+
+  g_timer_reset (timer);
 
   version = app.shortVersionString.UTF8String;
   if (version != NULL)
@@ -570,6 +581,9 @@ frida_add_app_metadata (GHashTable * parameters, NSString * identifier, FridaSpr
   get_task_allow = [app entitlementValueForKey:@"get-task-allow" ofClass:NSNumber.class];
   if (get_task_allow.boolValue)
     g_hash_table_insert (parameters, g_strdup ("debuggable"), g_variant_ref_sink (g_variant_new_boolean (TRUE)));
+
+  g_printerr ("Part two took %u ms\n", (guint) (g_timer_elapsed (timer, NULL) * 1000.0));
+  g_timer_destroy (timer);
 }
 
 static void
