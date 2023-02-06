@@ -1056,6 +1056,12 @@ namespace Frida {
 			Object (host_session: host_session);
 		}
 
+		construct {
+			attach_options["exceptor"] = "off";
+			attach_options["exit-monitor"] = "off";
+			attach_options["thread-suspend-monitor"] = "off";
+		}
+
 		public async HostApplicationInfo[] enumerate_applications (ApplicationQueryOptions options,
 				Cancellable? cancellable) throws Error, IOError {
 			var identifiers_array = new Json.Array ();
