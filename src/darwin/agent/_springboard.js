@@ -13,7 +13,7 @@ const sbs = importSpringBoardServices();
 const pidPtr = Memory.alloc(4);
 
 rpc.exports = {
-  enumerateApplications(identifiers, scope) {
+  _enumerateApplications(identifiers, scope) {
     return performWithAutoreleasePool(() => {
       const identifier = NSString.stringWithUTF8String_(Memory.allocUtf8String('com.apple.calculator'));
       fetchAppMetadata(identifier);
@@ -21,61 +21,39 @@ rpc.exports = {
     });
   },
 
-  _enumerateApplications(identifiers, scope) {
-    console.log('identifiers:', JSON.stringify(identifiers));
-    return performWithAutoreleasePool(() => {
+  enumerateApplications(identifiers, scope) {
+    const r = performWithAutoreleasePool(() => {
+      const result = [];
+
       let identifierObjects;
       if (identifiers.length === 0) {
-        const t1 = Date.now();
-        try {
-          identifierObjects = parseNSArray(sbs.copyApplicationDisplayIdentifiers(NO, NO));
-        } catch (e) {
-          console.log('Oh noes: ' + e.stack);
-          return [];
-        }
-        const t2 = Date.now();
-        console.log(`Listing took ${t2 - t1} ms`);
+        identifierObjects = parseNSArray(sbs.copyApplicationDisplayIdentifiers(NO, NO));
       } else {
         identifierObjects = identifiers.map(id => NSString.stringWithUTF8String_(Memory.allocUtf8String(id)));
       }
 
-      const result = [];
-      const t1 = Date.now();
-      let nameTotal = 0;
-      let pidTotal = 0;
-      let paramsTotal = 0;
       for (const identifier of identifierObjects) {
         try {
-          const t6 = Date.now();
           const name = sbs.copyLocalizedApplicationNameForDisplayIdentifier(identifier);
-          const t7 = Date.now();
 
-          const t8 = Date.now();
           let pid;
           if (sbs.processIDForDisplayIdentifier(identifier, pidPtr)) {
-            console.log('Example: ' + identifier);
             pid = pidPtr.readU32();
           } else
             pid = 0;
-          const t9 = Date.now();
 
-          const t10 = Date.now();
           const parameters = fetchAppParameters(identifier, pid, scope);
-          const t11 = Date.now();
-
-          nameTotal += t7 - t6;
-          pidTotal += t9 - t8;
-          paramsTotal += t11 - t10;
 
           result.push([identifier.toString(), name.toString(), pid, parameters]);
         } catch (e) {
           console.log(`Skipping ${identifier.toString()}: ${e.stack}`);
         }
       }
-      const t2 = Date.now();
-      console.log(`Assembly took ${t2 - t1} ms (of which nameTotal=${nameTotal} pidTotal=${pidTotal} paramsTotal=${paramsTotal})`);
+
       return result;
     });
+
+    return r;
   }
 };
 
@@ -98,52 +76,39 @@ function fetchAppParameters(identifier, pid, scope) {
 }
 
 function fetchAppMetadata(identifier) {
-  const meta = {};
-
   const app = LSApplicationProxy.applicationProxyForIdentifier_(identifier);
 
-  console.log('before');
-  const t1 = Date.now();
-  console.profile('fetch-app-metadata');
+  const meta = {};
 
-  for (let i = 0; i !== 2000; i++) {
-    const version = app.shortVersionString();
-    if (version !== null)
-      meta.version = version.toString();
+  const version = app.shortVersionString();
+  if (version !== null)
+    meta.version = version.toString();
 
-    const build = app.bundleVersion();
-    if (build !== null)
-      meta.build = build.toString();
+  const build = app.bundleVersion();
+  if (build !== null)
+    meta.build = build.toString();
 
-    meta.path = app.bundleURL().path().toString();
+  meta.path = app.bundleURL().path().toString();
 
-    const dataPath = app.dataContainerURL();
-    const containerUrls = app.groupContainerURLs();
-    if (dataPath !== null || containerUrls?.count() > 0) {
-      const containers = {};
+  const dataPath = app.dataContainerURL();
+  const containerUrls = app.groupContainerURLs();
+  if (dataPath !== null || containerUrls?.count() > 0) {
+    const containers = {};
 
-      if (dataPath !== null)
-        containers.data = dataPath.path().toString();
+    if (dataPath !== null)
+      containers.data = dataPath.path().toString();
 
-      if (containerUrls !== null) {
-        for (const [key, value] of Object.entries(parseNSDictionary(containerUrls)))
-          containers[key] = value.path().toString();
-      }
-
-      meta.containers = containers;
+    if (containerUrls !== null) {
+      for (const [key, value] of Object.entries(parseNSDictionary(containerUrls)))
+        containers[key] = value.path().toString();
     }
 
-    const getTaskAllow = app.entitlementValueForKey_ofClass_('get-task-allow', NSNumber);
-    if (getTaskAllow?.boolValue())
-      meta.debuggable = true;
-    //const t3 = Date.now();
+    meta.containers = containers;
   }
 
-  console.profileEnd();
-  const t2 = Date.now();
-  console.log(`Took ${t2 - t1} ms`);
-
-  //console.log(`Query part one: ${t2 - t1} ms, part two ${t3 - t2} ms`);
+  const getTaskAllow = app.entitlementValueForKey_ofClass_('get-task-allow', NSNumber);
+  if (getTaskAllow?.boolValue())
+    meta.debuggable = true;
 
   return meta;
 }
@@ -198,18 +163,11 @@ function objcHandleToAutoreleasedWrapper(handle) {
 }
 
 function performWithAutoreleasePool(fn) {
-  const t1 = Date.now();
-  try {
   const pool = NSAutoreleasePool.alloc().init();
   try {
     return fn();
   } finally {
     pool.release();
-    const t2 = Date.now();
-    console.log(`Took ${t2 - t1} ms`);
-  }
-  } catch (e) {
-    console.log('performWithAutoreleasePool() failed: ' + e.stack);
   }
 }
 
@@ -227,4 +185,3 @@ function parseNSDictionary(dict) {
     result[key.toString()] = dict.valueForKey_(key);
   return result;
 }
-
