@@ -4,6 +4,10 @@
 
 #include <sys/sysctl.h>
 
+#ifdef HAVE_IOS
+# import "springboard.h"
+#endif
+
 #ifdef HAVE_MACOS
 
 typedef struct _FridaMacModel FridaMacModel;
@@ -62,3 +66,28 @@ _frida_darwin_host_session_provider_try_extract_icon (void)
   return NULL;
 #endif
 }
+
+#ifdef HAVE_IOS
+
+gboolean
+_frida_fruit_controller_can_access_springboard_background_services (void)
+{
+  gboolean is_accessible;
+  NSAutoreleasePool * pool;
+  FridaSpringboardApi * api;
+  NSArray<NSString *> * identifiers;
+
+  pool = [[NSAutoreleasePool alloc] init];
+
+  api = _frida_get_springboard_api ();
+
+  identifiers = api->SBSCopyApplicationDisplayIdentifiers (NO, NO);
+  is_accessible = identifiers != nil;
+  [identifiers release];
+
+  [pool release];
+
+  return is_accessible;
+}
+
+#endif

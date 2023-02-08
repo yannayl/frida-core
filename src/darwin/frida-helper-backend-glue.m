@@ -691,6 +691,37 @@ permission_denied:
   }
 }
 
+guint
+frida_darwin_helper_backend_steal_send_right_from_task (guint task, guint send_right, GError ** error)
+{
+  kern_return_t kr;
+  mach_port_t port;
+  mach_msg_type_name_t acquired_type;
+  const gchar * failed_operation;
+
+  kr = mach_port_extract_right (task, send_right, MACH_MSG_TYPE_MOVE_SEND, &port, &acquired_type);
+  CHECK_MACH_RESULT (kr, ==, KERN_SUCCESS, "mach_port_extract_right local_rx");
+
+  return port;
+
+mach_failure:
+  {
+    g_set_error (error,
+        FRIDA_ERROR,
+        FRIDA_ERROR_NOT_SUPPORTED,
+        "Unexpected error while stealing send right (%s returned '%s')",
+        failed_operation, mach_error_string (kr));
+    return MACH_PORT_NULL;
+  }
+}
+
+guint
+frida_darwin_helper_backend_copy_local_send_right (guint send_right)
+{
+  mach_port_mod_refs (mach_task_self (), send_right, MACH_PORT_RIGHT_SEND, 1);
+  return send_right;
+}
+
 void
 frida_darwin_helper_backend_deallocate_port (guint port)
 {

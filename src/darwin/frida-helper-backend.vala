@@ -621,6 +621,8 @@ namespace Frida {
 			throws Error;
 
 		public extern static uint task_for_pid (uint pid) throws Error;
+		public extern static uint steal_send_right_from_task (uint task, uint send_right) throws Error;
+		public extern static uint copy_local_send_right (uint send_right);
 		public extern static void deallocate_port (uint port);
 
 		public extern static bool is_mmap_available ();

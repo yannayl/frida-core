@@ -532,7 +532,7 @@ static void
 frida_add_app_metadata (GHashTable * parameters, NSString * identifier, FridaSpringboardApi * api)
 {
   LSApplicationProxy * app;
-  const char * version, * build, * data_path;
+  const char * version, * build, * bundle_path, * data_path;
   NSDictionary<NSString *, NSURL *> * container_urls;
   NSNumber * get_task_allow;
 
@@ -548,7 +548,9 @@ frida_add_app_metadata (GHashTable * parameters, NSString * identifier, FridaSpr
   if (build != NULL)
     g_hash_table_insert (parameters, g_strdup ("build"), g_variant_ref_sink (g_variant_new_string (build)));
 
-  g_hash_table_insert (parameters, g_strdup ("path"), g_variant_ref_sink (g_variant_new_string (app.bundleURL.path.UTF8String)));
+  bundle_path = app.bundleURL.path.UTF8String;
+  if (bundle_path != NULL)
+    g_hash_table_insert (parameters, g_strdup ("path"), g_variant_ref_sink (g_variant_new_string (bundle_path)));
 
   data_path = app.dataContainerURL.path.UTF8String;
   container_urls = app.groupContainerURLs;

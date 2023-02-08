@@ -233,16 +233,19 @@ namespace Frida {
 
 		public override async HostApplicationInfo get_frontmost_application (HashTable<string, Variant> options,
 				Cancellable? cancellable) throws Error, IOError {
+			yield ensure_system_prepared (cancellable);
 			return System.get_frontmost_application (FrontmostQueryOptions._deserialize (options));
 		}
 
 		public override async HostApplicationInfo[] enumerate_applications (HashTable<string, Variant> options,
 				Cancellable? cancellable) throws Error, IOError {
+			yield ensure_system_prepared (cancellable);
 			return yield application_enumerator.enumerate_applications (ApplicationQueryOptions._deserialize (options));
 		}
 
 		public override async HostProcessInfo[] enumerate_processes (HashTable<string, Variant> options,
 				Cancellable? cancellable) throws Error, IOError {
+			yield ensure_system_prepared (cancellable);
 			return yield process_enumerator.enumerate_processes (ProcessQueryOptions._deserialize (options));
 		}
 
@@ -307,6 +310,7 @@ namespace Frida {
 		}
 
 		public override async void kill (uint pid, Cancellable? cancellable) throws Error, IOError {
+			yield ensure_system_prepared (cancellable);
 			yield helper.kill_process (pid, cancellable);
 		}
 
@@ -321,6 +325,12 @@ namespace Frida {
 			injectee_by_pid[pid] = id;
 
 			return stream_future;
+		}
+
+		private async void ensure_system_prepared (Cancellable? cancellable) throws Error, IOError {
+#if IOS
+			yield fruit_controller.ensure_system_prepared (cancellable);
+#endif
 		}
 
 #if IOS
@@ -424,6 +434,14 @@ namespace Frida {
 
 		private Gee.HashSet<uint> xpcproxies = new Gee.HashSet<uint> ();
 
+		private Promise<bool> ensure_system_request;
+		private uint springboard_services_port;
+		private Gum.Interceptor? interceptor;
+		private BootstrapLookUpFunc bootstrap_look_up;
+
+		[CCode (has_target = false)]
+		private delegate int BootstrapLookUpFunc (uint bootstrap_port, string service_name, uint * service_port);
+
 		private enum CrashReporterState {
 			DISABLED,
 			INACTIVE,
@@ -455,6 +473,12 @@ namespace Frida {
 		}
 
 		~FruitController () {
+			if (bootstrap_look_up != null)
+				interceptor.revert ((void *) bootstrap_look_up);
+			interceptor = null;
+			if (springboard_services_port != 0)
+				DarwinHelperBackend.deallocate_port (springboard_services_port);
+
 			launchd_agent.spawn_captured.disconnect (on_spawn_captured);
 			launchd_agent.spawn_preparation_aborted.disconnect (on_spawn_preparation_aborted);
 			launchd_agent.spawn_preparation_started.disconnect (on_spawn_preparation_started);
@@ -505,6 +529,8 @@ namespace Frida {
 		}
 
 		public async uint spawn (string identifier, HostSpawnOptions options, Cancellable? cancellable) throws Error, IOError {
+			yield ensure_system_prepared (cancellable);
+
 			if (spawn_requests.has_key (identifier))
 				throw new Error.INVALID_OPERATION ("Spawn already in progress for the specified identifier");
 
@@ -853,6 +879,58 @@ namespace Frida {
 				return false;
 			}
 		}
+
+		public async void ensure_system_prepared (Cancellable? cancellable) throws Error, IOError {
+			while (ensure_system_request != null) {
+				try {
+					yield ensure_system_request.future.wait_async (cancellable);
+					return;
+				} catch (Error e) {
+					throw e;
+				} catch (IOError e) {
+					cancellable.set_error_if_cancelled ();
+				}
+			}
+			ensure_system_request = new Promise<bool> ();
+
+			try {
+				if (!_can_access_springboard_background_services ()) {
+					var agent = new PortSnatcherAgent (host_session, cancellable);
+					springboard_services_port = yield agent.snatch ("com.apple.springboard.backgroundappservices",
+						cancellable);
+					agent.close.begin (io_cancellable);
+
+					interceptor = Gum.Interceptor.obtain ();
+					bootstrap_look_up = (BootstrapLookUpFunc)
+						Gum.Module.find_export_by_name ("/usr/lib/system/libxpc.dylib", "bootstrap_look_up");
+					interceptor.replace ((void *) bootstrap_look_up, (void *) replacement_bootstrap_look_up, this);
+				}
+
+				ensure_system_request.resolve (true);
+			} catch (GLib.Error e) {
+				ensure_system_request.reject (e);
+			}
+
+			var pending_error = ensure_system_request.future.error;
+			if (pending_error != null) {
+				ensure_system_request = null;
+
+				throw_api_error (pending_error);
+			}
+		}
+
+		private static int replacement_bootstrap_look_up (uint bootstrap_port, string service_name, uint * service_port) {
+			FruitController * self = Gum.Interceptor.get_current_invocation ().get_replacement_data ();
+
+			if (service_name == "com.apple.springboard.backgroundappservices") {
+				*service_port = DarwinHelperBackend.copy_local_send_right (self->springboard_services_port);
+				return 0;
+			}
+
+			return self->bootstrap_look_up (bootstrap_port, service_name, service_port);
+		}
+
+		internal extern static bool _can_access_springboard_background_services ();
 	}
 
 	private interface MappedAgentContainer : Object {
@@ -1305,6 +1383,50 @@ namespace Frida {
 
 		protected override async string? load_source (Cancellable? cancellable) throws Error, IOError {
 			return (string) Frida.Data.Darwin.get_osanalytics_js_blob ().data;
+		}
+	}
+
+	private class PortSnatcherAgent : InternalAgent {
+		public Cancellable io_cancellable {
+			get;
+			construct;
+		}
+
+		private uint atc_pid;
+
+		public PortSnatcherAgent (DarwinHostSession host_session, Cancellable io_cancellable) {
+			Object (host_session: host_session, io_cancellable: io_cancellable);
+		}
+
+		construct {
+			attach_options["exceptor"] = "off";
+			attach_options["exit-monitor"] = "off";
+			attach_options["thread-suspend-monitor"] = "off";
+		}
+
+		public async uint snatch (string name, Cancellable? cancellable) throws Error, IOError {
+			var name_node = new Json.Node.alloc ().init_string (name);
+			Json.Node remote_port_node = yield call ("bootstrapLookUp", new Json.Node[] { name_node }, cancellable);
+			uint remote_port = (uint) remote_port_node.get_int ();
+
+			var remote_task = DarwinHelperBackend.task_for_pid (atc_pid);
+			try {
+				return DarwinHelperBackend.steal_send_right_from_task (remote_task, remote_port);
+			} finally {
+				DarwinHelperBackend.deallocate_port (remote_task);
+			}
+		}
+
+		protected override void on_event (string type, Json.Array event) {
+		}
+
+		protected override async uint get_target_pid (Cancellable? cancellable) throws Error, IOError {
+			atc_pid = LocalProcesses.get_pid ("atc");
+			return atc_pid;
+		}
+
+		protected override async string? load_source (Cancellable? cancellable) throws Error, IOError {
+			return (string) Frida.Data.Darwin.get_portsnatcher_js_blob ().data;
 		}
 	}
 #endif
