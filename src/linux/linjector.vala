@@ -78,6 +78,10 @@ namespace Frida {
 			return yield inject_library_file_with_template (pid, agent.get_path_template (), entrypoint, data, cancellable);
 		}
 
+		public async IOStream request_control_channel (uint id, Cancellable? cancellable) throws Error, IOError {
+			return yield helper.request_control_channel (id, cancellable);
+		}
+
 		private void ensure_tempdir_prepared () {
 			if (did_prep_tempdir)
 				return;

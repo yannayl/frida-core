@@ -376,6 +376,13 @@ namespace Frida {
 	}
 #endif
 
+#if LINUX
+	public struct LinuxInjectorState {
+		public int frida_ctrlfd;
+		public int agent_ctrlfd;
+	}
+#endif
+
 #if LINUX || FREEBSD
 	public struct PosixInjectorState {
 		public int fifo_fd;

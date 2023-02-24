@@ -16,8 +16,8 @@ struct _FridaBootstrapContext
 {
   size_t loader_size;
   void * loader_base;
-  int enable_socket_endpoints;
-  int socket_endpoints[2];
+  int enable_ctrlfds;
+  int ctrlfds[2];
   FridaLibcApi * libc;
 };
 
@@ -27,7 +27,7 @@ struct _FridaLoaderContext
   char * agent_entrypoint;
   char * agent_parameters;
 
-  int socket_endpoints[2];
+  int ctrlfds[2];
   FridaLibcApi * libc;
 
   pthread_t worker;

@@ -89,10 +89,10 @@ frida_bootstrap (FridaBootstrapContext * ctx)
   if (ctx->loader_base == MAP_FAILED)
     return 3;
 
-  ctx->socket_endpoints[0] = -1;
-  ctx->socket_endpoints[1] = -1;
-  if (ctx->enable_socket_endpoints)
-    ctx->libc->socketpair (AF_UNIX, SOCK_STREAM, 0, ctx->socket_endpoints);
+  ctx->ctrlfds[0] = -1;
+  ctx->ctrlfds[1] = -1;
+  if (ctx->enable_ctrlfds)
+    ctx->libc->socketpair (AF_UNIX, SOCK_STREAM, 0, ctx->ctrlfds);
 
   return 0;
 }
@@ -532,7 +532,7 @@ main (void)
 
   bzero (&ctx, sizeof (ctx));
   ctx.loader_size = 4096;
-  ctx.enable_socket_endpoints = true;
+  ctx.enable_ctrlfds = true;
   ctx.libc = &libc;
 
   result = frida_bootstrap (&ctx);

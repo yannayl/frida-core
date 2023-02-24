@@ -118,6 +118,15 @@ namespace Frida {
 			}
 		}
 
+		public async IOStream request_control_channel (uint id, Cancellable? cancellable) throws Error, IOError {
+			var helper = obtain_for_injectee_id (id);
+			try {
+				return yield helper.request_control_channel (id, cancellable);
+			} catch (GLib.Error e) {
+				throw_dbus_error (e);
+			}
+		}
+
 		public async void demonitor (uint id, Cancellable? cancellable) throws Error, IOError {
 			var helper = obtain_for_injectee_id (id);
 			try {
@@ -569,6 +578,15 @@ namespace Frida {
 				string temp_path, uint id, Cancellable? cancellable) throws Error, IOError {
 			try {
 				yield proxy.inject_library_file (pid, path_template, entrypoint, data, temp_path, id, cancellable);
+			} catch (GLib.Error e) {
+				throw_dbus_error (e);
+			}
+		}
+
+		public async IOStream request_control_channel (uint id, Cancellable? cancellable) throws Error, IOError {
+			try {
+				Socket socket = yield proxy.request_control_channel (id, cancellable);
+				return SocketConnection.factory_create_connection (socket);
 			} catch (GLib.Error e) {
 				throw_dbus_error (e);
 			}

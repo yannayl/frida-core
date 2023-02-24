@@ -160,6 +160,12 @@ namespace Frida {
 			yield backend.inject_library_file (pid, path_template, entrypoint, data, temp_path, id, cancellable);
 		}
 
+		public async Socket request_control_channel (uint id, Cancellable? cancellable) throws Error, IOError {
+			IOStream stream = yield backend.request_control_channel (id, cancellable);
+			var connection = (SocketConnection) stream;
+			return connection.socket;
+		}
+
 		public async void demonitor (uint id, Cancellable? cancellable) throws Error, IOError {
 			yield backend.demonitor (id, cancellable);
 		}

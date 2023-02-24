@@ -181,7 +181,7 @@ namespace Frida {
 			}
 #endif
 
-			var linjector = injector as Linjector;
+			var linjector = (Linjector) injector;
 
 			yield wait_for_uninject (injector, cancellable, () => {
 				return linjector.any_still_injected ();
@@ -416,16 +416,18 @@ namespace Frida {
 
 		protected override async Future<IOStream> perform_attach_to (uint pid, HashTable<string, Variant> options,
 				Cancellable? cancellable, out Object? transport) throws Error, IOError {
+			/*
 			PipeTransport.set_temp_directory (tempdir.path);
 
 			var t = new PipeTransport ();
 
 			var stream_request = Pipe.open (t.local_address, cancellable);
+			*/
 
 			uint id;
 			string entrypoint = "frida_agent_main";
-			string agent_parameters = make_agent_parameters (pid, t.remote_address, options);
-			var linjector = injector as Linjector;
+			string agent_parameters = make_agent_parameters (pid, "" /*t.remote_address*/, options);
+			var linjector = (Linjector) injector;
 #if HAVE_EMBEDDED_ASSETS
 			id = yield linjector.inject_library_resource (pid, agent, entrypoint, agent_parameters, cancellable);
 #else
@@ -433,9 +435,15 @@ namespace Frida {
 #endif
 			injectee_by_pid[pid] = id;
 
-			transport = t;
+			var stream_request = new Promise<IOStream> ();
+			IOStream stream = yield linjector.request_control_channel (id, cancellable);
+			stream_request.resolve (stream);
 
-			return stream_request;
+			//transport = t;
+			transport = null;
+
+			//return stream_request;
+			return stream_request.future;
 		}
 
 #if ANDROID

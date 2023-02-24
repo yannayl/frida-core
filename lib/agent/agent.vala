@@ -131,6 +131,19 @@ namespace Frida.Agent {
 				}
 #endif
 
+#if LINUX
+				var linjector_state = (LinuxInjectorState *) opaque_injector_state;
+
+				int agent_ctrlfd = linjector_state->agent_ctrlfd;
+				linjector_state->agent_ctrlfd = -1;
+
+				fdt_padder.move_descriptor_if_needed (ref agent_ctrlfd);
+				Gum.Cloak.add_file_descriptor (agent_ctrlfd);
+
+				string agent_parameters_with_transport_uri = "socket:%d%s".printf (agent_ctrlfd, agent_parameters);
+				agent_parameters = agent_parameters_with_transport_uri;
+#endif
+
 				var ignore_scope = new ThreadIgnoreScope (FRIDA_THREAD);
 
 				shared_instance = new Runner (agent_parameters, agent_path, agent_range);
